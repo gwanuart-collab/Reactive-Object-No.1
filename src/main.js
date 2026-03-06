@@ -5,7 +5,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 /* =========================================================
    0) 프로젝트 값 (Maya Outliner 기준 이름)
 ========================================================= */
-const MODEL_URL = '/model/TrafficLight12/TrafficLight12.glb'
+const MODEL_URL = `${import.meta.env.BASE_URL}model/TrafficLight12/TrafficLight12.glb`
 
 const POLE_NAME = 'POLE_MESH'
 const SOCKET_NAME = 'SOCKET_SignR'
