@@ -1,16 +1,11 @@
 import * as THREE from 'three'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
-import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js'
 
 /* =========================================================
    0) 프로젝트 값 (Maya Outliner 기준 이름)
 ========================================================= */
-// NOTE: TrafficLight12.opt.glb was created with aggressive transforms (join/flatten/simplify)
-// that can change node hierarchy/names and break name-based interactions.
-// Use a "meshopt-only" variant to keep original nodes/animations intact.
-const MODEL_URL_OPT = `${import.meta.env.BASE_URL}model/TrafficLight12/TrafficLight12.meshopt.glb`
-const MODEL_URL_ORIG = `${import.meta.env.BASE_URL}model/TrafficLight12/TrafficLight12.glb`
+const MODEL_URL = '/model/TrafficLight12/TrafficLight12.glb'
 
 const POLE_NAME = 'POLE_MESH'
 const SOCKET_NAME = 'SOCKET_SignR'
@@ -638,22 +633,6 @@ const lightOnInfo = [
    8) 모델 로드 + 세팅
 ========================================================= */
 const loader = new GLTFLoader()
-// Windows 등 일부 환경에서 WASM 초기화가 비동기로 끝나기 전에
-// meshopt 압축 파일을 로드하면 실패할 수 있음. ready 후에 디코더 설정 및 로드.
-let meshoptReady = false
-if (typeof MeshoptDecoder !== 'undefined' && MeshoptDecoder.ready) {
-  MeshoptDecoder.ready.then(() => {
-    meshoptReady = true
-    loader.setMeshoptDecoder(MeshoptDecoder)
-    startModelLoad()
-  }).catch((err) => {
-    console.warn('MeshoptDecoder.ready failed, loading original model.', err)
-    startModelLoad()
-  })
-} else {
-  loader.setMeshoptDecoder(MeshoptDecoder)
-  startModelLoad()
-}
 
 let model = null
 let allMeshes = []
@@ -772,16 +751,10 @@ let circle1MeshBaseLocalPos = new THREE.Vector3()
 let prevHoverCylinder17 = false
 let prevHoverCircle1 = false
 
-let _modelLoadT0 = 0
-let _loadingModelUrl = MODEL_URL_OPT
-
-function startModelLoad() {
-  _modelLoadT0 = performance.now()
-  _loadingModelUrl = MODEL_URL_OPT
-  loader.load(
-    MODEL_URL_OPT,
-    (gltf) => {
-    console.log('✅ GLTF loaded:', _loadingModelUrl, `(${Math.round(performance.now() - _modelLoadT0)}ms)`)
+loader.load(
+  MODEL_URL,
+  (gltf) => {
+    console.log('✅ GLTF loaded:', MODEL_URL)
 
     model = gltf.scene
     scene.add(model)
@@ -1189,48 +1162,8 @@ function startModelLoad() {
     }
   },
   undefined,
-  (err) => {
-    console.warn('⚠️ GLTF load failed. Falling back to original.', err)
-    _modelLoadT0 = performance.now()
-    _loadingModelUrl = MODEL_URL_ORIG
-    loader.load(
-      MODEL_URL_ORIG,
-      (gltf) => {
-        console.log('✅ GLTF loaded:', _loadingModelUrl, `(${Math.round(performance.now() - _modelLoadT0)}ms)`)
-        // 원본 로드도 opt와 동일한 초기화 경로를 타도록, 동일한 onLoad 로직을 재호출합니다.
-        // 아래는 opt 로드 onLoad와 동일한 초기화가 필요하므로, 기존 콜백을 재사용하기 위해
-        // 현재 페이지를 새로고침하지 않고 그대로 진행합니다.
-        // (동일한 scope 내에 있는 초기화 코드를 그대로 실행하기 위해 함수로 분리하지 않고,
-        //  동일 파일의 로직이 수행되도록 합니다.)
-        model = gltf.scene
-        scene.add(model)
-        model.rotation.set(0, 0, 0)
-        model.position.set(0, 0, 0)
-        model.updateMatrixWorld(true)
-        const box0 = new THREE.Box3().setFromObject(model)
-        const size0 = box0.getSize(new THREE.Vector3())
-        const maxDim0 = Math.max(size0.x, size0.y, size0.z)
-        UNIT = maxDim0 < 10 ? 0.01 : 1
-        neutralizeMaterials(model)
-        ensureUniqueMaterials(model)
-        const box = new THREE.Box3().setFromObject(model)
-        const center = box.getCenter(new THREE.Vector3())
-        const size = box.getSize(new THREE.Vector3())
-        const maxDim = Math.max(size.x, size.y, size.z)
-        camera.position.set(center.x + maxDim * 0.9, center.y + maxDim * 0.55, center.z + maxDim * 1.35)
-        camera.lookAt(center)
-        controls.target.copy(center)
-        controls.update()
-        allMeshes = collectMeshes(model)
-        window.dispatchEvent(new CustomEvent('reactive-object-ready'))
-      },
-      undefined,
-      (err2) => console.error('GLTF load error (orig):', err2)
-    )
-  }
-  )
-}
-
+  (err) => console.error('GLTF load error:', err)
+)
 
 /* =========================================================
    9) Shift+클릭 선택 / Enter 확정 attach / Backspace 원복
