@@ -638,7 +638,22 @@ const lightOnInfo = [
    8) 모델 로드 + 세팅
 ========================================================= */
 const loader = new GLTFLoader()
-loader.setMeshoptDecoder(MeshoptDecoder)
+// Windows 등 일부 환경에서 WASM 초기화가 비동기로 끝나기 전에
+// meshopt 압축 파일을 로드하면 실패할 수 있음. ready 후에 디코더 설정 및 로드.
+let meshoptReady = false
+if (typeof MeshoptDecoder !== 'undefined' && MeshoptDecoder.ready) {
+  MeshoptDecoder.ready.then(() => {
+    meshoptReady = true
+    loader.setMeshoptDecoder(MeshoptDecoder)
+    startModelLoad()
+  }).catch((err) => {
+    console.warn('MeshoptDecoder.ready failed, loading original model.', err)
+    startModelLoad()
+  })
+} else {
+  loader.setMeshoptDecoder(MeshoptDecoder)
+  startModelLoad()
+}
 
 let model = null
 let allMeshes = []
@@ -757,12 +772,15 @@ let circle1MeshBaseLocalPos = new THREE.Vector3()
 let prevHoverCylinder17 = false
 let prevHoverCircle1 = false
 
-let _modelLoadT0 = performance.now()
+let _modelLoadT0 = 0
 let _loadingModelUrl = MODEL_URL_OPT
 
-loader.load(
-  MODEL_URL_OPT,
-  (gltf) => {
+function startModelLoad() {
+  _modelLoadT0 = performance.now()
+  _loadingModelUrl = MODEL_URL_OPT
+  loader.load(
+    MODEL_URL_OPT,
+    (gltf) => {
     console.log('✅ GLTF loaded:', _loadingModelUrl, `(${Math.round(performance.now() - _modelLoadT0)}ms)`)
 
     model = gltf.scene
@@ -1210,7 +1228,9 @@ loader.load(
       (err2) => console.error('GLTF load error (orig):', err2)
     )
   }
-)
+  )
+}
+
 
 /* =========================================================
    9) Shift+클릭 선택 / Enter 확정 attach / Backspace 원복
