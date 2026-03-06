@@ -11,7 +11,7 @@ const POLE_NAME = 'POLE_MESH'
 const SOCKET_NAME = 'SOCKET_SignR'
 const LIGHT_NAMES = ['LIGHT1', 'LIGHT2', 'LIGHT3']
 
-const STORAGE_KEY = 'reactive_object_no_1__signR_attached_names'
+const STORAGE_KEY = 'signR_attached_names'
 
 // =========================================================
 // ✅ [복구] Cylinder17: 1회 hover로 시작 → 마우스 떼도 x번 상하 반복
@@ -69,7 +69,7 @@ const CIRCLE1_SQUASH = 0.35
 const BALLOON_NAME = 'pasted__Cylinder5'
 
 // ✅ 풍선이 커질 때 옆으로 밀릴 메쉬들
-const BALLOON_PUSH_NAMES = ['pasted__CUBE12', 'pasted__CUBE11', 'pasted__CUBE10']
+const BALLOON_PUSH_NAMES = ['pasted__CUBE12', 'pasted__CUBE11', 'pasted__CUBE10', 'CUBE2', 'CUBE8']
 const BALLOON_PUSH_AXIS = 'x'
 const BALLOON_PUSH_MAX = 15
 
@@ -170,9 +170,8 @@ const renderer = new THREE.WebGLRenderer({ antialias: true })
 renderer.setSize(window.innerWidth, window.innerHeight)
 renderer.outputColorSpace = THREE.SRGBColorSpace
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
-const appEl = document.getElementById('app') ?? document.body
-appEl.appendChild(renderer.domElement)
-renderer.domElement.style.display = 'block'
+document.body.style.margin = '0'
+document.body.appendChild(renderer.domElement)
 
 /* =========================================================
    2) 조명
@@ -363,6 +362,47 @@ function makeWorldBottomPivot(mesh, pivotName = 'CIRCLE1_PIVOT_WORLD') {
 }
 
 /* =========================================================
+   ✅ [추가] CIRCLE1을 "월드 수직(Y)"으로만 움직이게 하는 정렬 pivot
+========================================================= */
+const _tmpWQ = new THREE.Quaternion()
+const _tmpWP = new THREE.Vector3()
+
+function makeWorldYAlignedPivotKeepWorld(mesh, pivotName = 'WORLDY_PIVOT') {
+  if (!mesh) return null
+
+  const parent = mesh.parent
+  if (!parent) return null
+
+  parent.updateMatrixWorld(true)
+  mesh.updateMatrixWorld(true)
+
+  const meshWorldPos = new THREE.Vector3()
+  const meshWorldQuat = new THREE.Quaternion()
+  const meshWorldScale = new THREE.Vector3()
+  mesh.matrixWorld.decompose(meshWorldPos, meshWorldQuat, meshWorldScale)
+
+  const pivot = new THREE.Object3D()
+  pivot.name = pivotName
+  parent.add(pivot)
+
+  const parentWorldQuat = new THREE.Quaternion()
+  parent.getWorldQuaternion(parentWorldQuat)
+
+  pivot.quaternion.copy(parentWorldQuat).invert()
+  pivot.updateMatrixWorld(true)
+
+  const pivotLocalPos = meshWorldPos.clone()
+  parent.worldToLocal(pivotLocalPos)
+  pivot.position.copy(pivotLocalPos)
+  pivot.updateMatrixWorld(true)
+
+  pivot.attach(mesh)
+  mesh.updateMatrixWorld(true)
+
+  return pivot
+}
+
+/* =========================================================
    ✅ 전선(케이블): Verlet Rope + Tube
 ========================================================= */
 class Cable {
@@ -418,7 +458,7 @@ class Cable {
     })
     this.mesh = new THREE.Mesh(this.geom, this.mat)
 
-    ;(parent || startObj.parent || startObj).add(this.mesh)
+      ; (parent || startObj.parent || startObj).add(this.mesh)
     this.mesh.frustumCulled = false
   }
 
@@ -1385,10 +1425,10 @@ function animate() {
       if (info && mesh) {
         const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
         mats.forEach((mat) => makeEmissive(mat, info.color, 2.0))
-        appEl.style.cursor = 'pointer'
+        document.body.style.cursor = 'pointer'
       }
     } else {
-      appEl.style.cursor =
+      document.body.style.cursor =
         hoverPole || hoverBalloon || hoverRubber || hoverCube5Base || hoverCylinder17 || hoverCircle1
           ? 'pointer'
           : 'default'
@@ -1413,10 +1453,10 @@ function animate() {
         z: balloonBasePivotScale.z,
       }
 
-      ;['x', 'y', 'z'].forEach((k) => {
-        if (k === balloonUpAxisKey) s[k] *= 1.0
-        else s[k] *= target
-      })
+        ;['x', 'y', 'z'].forEach((k) => {
+          if (k === balloonUpAxisKey) s[k] *= 1.0
+          else s[k] *= target
+        })
 
       balloonPivot.scale.x = THREE.MathUtils.lerp(balloonPivot.scale.x, s.x, 0.15)
       balloonPivot.scale.y = THREE.MathUtils.lerp(balloonPivot.scale.y, s.y, 0.15)
@@ -1439,7 +1479,7 @@ function animate() {
           m.position[BALLOON_PUSH_AXIS] = THREE.MathUtils.lerp(
             m.position[BALLOON_PUSH_AXIS],
             targetPos[BALLOON_PUSH_AXIS],
-            0.15
+            0.35
           )
         })
       }
@@ -1491,10 +1531,10 @@ function animate() {
       const stretch = hoverRubber ? RUBBER_STRETCH : 1.0
       const squash = hoverRubber ? RUBBER_SQUASH : 1.0
 
-      ;['x', 'y', 'z'].forEach((k) => {
-        if (k === rubberRightAxisKey) sc[k] *= stretch
-        else sc[k] *= squash
-      })
+        ;['x', 'y', 'z'].forEach((k) => {
+          if (k === rubberRightAxisKey) sc[k] *= stretch
+          else sc[k] *= squash
+        })
 
       rubberPivot.scale.x = THREE.MathUtils.lerp(rubberPivot.scale.x, sc.x, RUBBER_LERP)
       rubberPivot.scale.y = THREE.MathUtils.lerp(rubberPivot.scale.y, sc.y, RUBBER_LERP)
