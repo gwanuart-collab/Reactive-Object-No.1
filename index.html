@@ -3,6 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚦</text></svg>" />
     <title>Reactive Object No.1</title>
     <style>
       html,
@@ -78,8 +79,8 @@
 
       // Vite를 쓰지 않고(예: Live Server: 127.0.0.1:5502) 열면
       // main.js 내부의 `import 'three'`가 해석되지 않아 실패할 수 있습니다.
+      window.addEventListener('reactive-object-ready', () => hide(), { once: true });
       import('/src/main.js')
-        .then(() => hide())
         .catch((err) => {
           console.error(err);
           show(

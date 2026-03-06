@@ -171,7 +171,9 @@ renderer.setSize(window.innerWidth, window.innerHeight)
 renderer.outputColorSpace = THREE.SRGBColorSpace
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
 document.body.style.margin = '0'
-document.body.appendChild(renderer.domElement)
+const appEl = document.getElementById('app')
+if (appEl) appEl.appendChild(renderer.domElement)
+else document.body.appendChild(renderer.domElement)
 
 /* =========================================================
    2) 조명
@@ -1174,6 +1176,8 @@ loader.load(
         console.log('✅ cable#4 created.')
       }
     }
+
+    window.dispatchEvent(new CustomEvent('reactive-object-ready'))
   },
   undefined,
   (err) => console.error('GLTF load error:', err)
