@@ -72,30 +72,19 @@
       <div><strong>선택</strong>: Shift+클릭</div>
       <div><strong>부착</strong>: Enter / <strong>복구</strong>: Backspace / <strong>선택 해제</strong>: Delete 또는 X</div>
     </div>
-    <script type="module">
-      const statusEl = document.getElementById('status');
-      const hide = () => statusEl && (statusEl.style.display = 'none');
-      const show = (msg) => statusEl && (statusEl.textContent = msg);
-
-      // Vite를 쓰지 않고(예: Live Server: 127.0.0.1:5502) 열면
-      // main.js 내부의 `import 'three'`가 해석되지 않아 실패할 수 있습니다.
-      window.addEventListener('reactive-object-ready', () => hide(), { once: true });
-      import('/src/main.js')
-        .catch((err) => {
-          console.error(err);
-          show(
-            [
-              '모듈 로드 실패:',
-              String(err?.message || err),
-              '',
-              '해결:',
-              '- 터미널에서 `npm install` 후 `npm run dev` 실행',
-              '- Vite 주소(보통 `http://localhost:5173`)로 접속',
-              '',
-              '지금처럼 Live Server(예: 127.0.0.1:5502)로 열면 `three` 모듈 import가 실패할 수 있어요.',
-            ].join('\\n')
-          );
-        });
+    <script type="module" src="/src/main.js"></script>
+    <script>
+      (function () {
+        var statusEl = document.getElementById('status');
+        var hide = function () { if (statusEl) statusEl.style.display = 'none'; };
+        var show = function (msg) { if (statusEl) statusEl.textContent = msg; };
+        window.addEventListener('reactive-object-ready', hide, { once: true });
+        setTimeout(function () {
+          if (statusEl && statusEl.style.display !== 'none') {
+            show('로딩이 오래 걸리거나 실패했을 수 있어요.\n브라우저 콘솔(F12)을 확인하거나, 로컬에서 npm run dev 후 접속해 보세요.');
+          }
+        }, 15000);
+      })();
     </script>
   </body>
 </html>
