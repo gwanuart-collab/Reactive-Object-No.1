@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Reactive Object No.1</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+        width: 100%;
+        height: 100%;
+        background: #0f0f12;
+      }
+
+      #app {
+        width: 100%;
+        height: 100%;
+      }
+
+      canvas {
+        display: block;
+        width: 100%;
+        height: 100%;
+      }
+
+      #hud {
+        position: fixed;
+        left: 12px;
+        bottom: 12px;
+        z-index: 10;
+        font: 12px/1.4 system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+        color: rgba(255, 255, 255, 0.82);
+        background: rgba(0, 0, 0, 0.35);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 10px;
+        padding: 10px 12px;
+        backdrop-filter: blur(8px);
+        user-select: none;
+      }
+      #hud strong {
+        color: rgba(255, 255, 255, 0.95);
+      }
+
+      #status {
+        position: fixed;
+        left: 12px;
+        top: 12px;
+        z-index: 10;
+        max-width: min(720px, calc(100vw - 24px));
+        font: 12px/1.45 system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+        color: rgba(255, 255, 255, 0.9);
+        background: rgba(0, 0, 0, 0.45);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 10px;
+        padding: 10px 12px;
+        white-space: pre-wrap;
+        backdrop-filter: blur(8px);
+        user-select: text;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+    <div id="status">Reactive Object No.1 로딩 중…</div>
+    <div id="hud">
+      <div><strong>Reactive Object No.1</strong></div>
+      <div><strong>조작</strong>: 마우스 드래그(회전) / 휠(줌) / 패닝</div>
+      <div><strong>선택</strong>: Shift+클릭</div>
+      <div><strong>부착</strong>: Enter / <strong>복구</strong>: Backspace / <strong>선택 해제</strong>: Delete 또는 X</div>
+    </div>
+    <script type="module">
+      const statusEl = document.getElementById('status');
+      const hide = () => statusEl && (statusEl.style.display = 'none');
+      const show = (msg) => statusEl && (statusEl.textContent = msg);
+
+      // Vite를 쓰지 않고(예: Live Server: 127.0.0.1:5502) 열면
+      // main.js 내부의 `import 'three'`가 해석되지 않아 실패할 수 있습니다.
+      import('/src/main.js')
+        .then(() => hide())
+        .catch((err) => {
+          console.error(err);
+          show(
+            [
+              '모듈 로드 실패:',
+              String(err?.message || err),
+              '',
+              '해결:',
+              '- 터미널에서 `npm install` 후 `npm run dev` 실행',
+              '- Vite 주소(보통 `http://localhost:5173`)로 접속',
+              '',
+              '지금처럼 Live Server(예: 127.0.0.1:5502)로 열면 `three` 모듈 import가 실패할 수 있어요.',
+            ].join('\\n')
+          );
+        });
+    </script>
+  </body>
+</html>
