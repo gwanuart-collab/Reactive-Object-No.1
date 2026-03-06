@@ -133,7 +133,6 @@ const BALLOON_PUSH_RULES = [
   { name: 'pasted__CUBE12', axis: 'x', max: 15, sign: +1 },
   { name: 'pasted__CUBE11', axis: 'x', max: 15, sign: +1 },
   { name: 'pasted__CUBE10', axis: 'x', max: 15, sign: +1 },
-
   { name: 'CIRCLE1', axis: 'x', max: 15, sign: -1 },
   { name: 'Cylinder11', axis: 'x', max: 15, sign: -1 },
   { name: 'Cylinder9', axis: 'x', max: 15, sign: -1 },
@@ -237,9 +236,7 @@ renderer.setSize(window.innerWidth, window.innerHeight)
 renderer.outputColorSpace = THREE.SRGBColorSpace
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
 document.body.style.margin = '0'
-const appEl = document.getElementById('app')
-if (appEl) appEl.appendChild(renderer.domElement)
-else document.body.appendChild(renderer.domElement)
+document.body.appendChild(renderer.domElement)
 
 /* =========================================================
    2) 조명
@@ -304,10 +301,8 @@ function neutralizeMaterials(root) {
     if (!obj.isMesh) return
 
     if (obj.geometry) {
-      // ✅ GLB에 normal이 이미 있으면 덮어쓰지 않기 (로우폴리처럼 보이는 현상 방지)
       const hasNormals = !!obj.geometry.attributes?.normal
       if (!hasNormals) obj.geometry.computeVertexNormals()
-
       if (obj.geometry.attributes.color) obj.geometry.deleteAttribute('color')
     }
 
@@ -321,25 +316,18 @@ function neutralizeMaterials(root) {
       mat.depthWrite = true
       mat.alphaTest = 0
 
-      // ✅ 기본 발광 제거(초기값 0) — 단, emissiveMap이 있는 경우는 건드리지 않음
       if (!mat.emissiveMap && 'emissive' in mat) mat.emissive = new THREE.Color(0x000000)
       if (!mat.emissiveMap && 'emissiveIntensity' in mat) mat.emissiveIntensity = 0.0
 
-      // ✅ 텍스처 유지 대상이면: 텍스처/맵을 죽이지 않도록 최소만 건드림
       if (isKeep) {
-        // map이 있으면 color는 흰색(텍스처 원색 유지)
         if (mat.map && mat.color) mat.color = new THREE.Color(0xffffff)
-
-        // roughness/metalness 맵이 있으면 숫자로 덮어쓰지 않음
         if (!mat.roughnessMap && 'roughness' in mat) mat.roughness = mat.roughness ?? 0.65
         if (!mat.metalnessMap && 'metalness' in mat) mat.metalness = mat.metalness ?? 0.08
-
         if ('vertexColors' in mat) mat.vertexColors = false
         mat.needsUpdate = true
         return
       }
 
-      // ✅ 기존 정리 로직(유지)
       if (mat.color) mat.color = new THREE.Color(0xcccccc)
       if ('roughness' in mat) mat.roughness = 0.65
       if ('metalness' in mat) mat.metalness = 0.08
@@ -353,7 +341,6 @@ function neutralizeMaterials(root) {
   })
 }
 
-// ✅ 핵심: GLB에서 재질이 공유되면 "라이트 하나 변경"이 "전체 발광"으로 번짐
 function ensureUniqueMaterials(root) {
   root.traverse((obj) => {
     if (!obj.isMesh || !obj.material) return
@@ -429,9 +416,6 @@ function makeWorldBottomPivot(mesh, pivotName = 'CIRCLE1_PIVOT_WORLD') {
   return { world, pivot }
 }
 
-/* =========================================================
-   ✅ [추가] CIRCLE1을 "월드 수직(Y)"으로만 움직이게 하는 정렬 pivot
-========================================================= */
 const _tmpWQ = new THREE.Quaternion()
 const _tmpWP = new THREE.Vector3()
 
@@ -526,7 +510,7 @@ class Cable {
     })
     this.mesh = new THREE.Mesh(this.geom, this.mat)
 
-      ; (parent || startObj.parent || startObj).add(this.mesh)
+    ;(parent || startObj.parent || startObj).add(this.mesh)
     this.mesh.frustumCulled = false
   }
 
@@ -806,7 +790,7 @@ let cyl17TargetOffset = 0
 let cyl17CurrentOffset = 0
 
 // =========================================================
-// ✅ CIRCLE1 runtime state (단순: 월드Y 정렬 pivot + position.y만)
+// ✅ CIRCLE1 runtime state
 // =========================================================
 let circle1Mesh = null
 let circle1Pivot = null
@@ -818,7 +802,7 @@ const circle1BasePivotScale = new THREE.Vector3(1, 1, 1)
 let circle1World = null
 let circle1MeshBaseLocalPos = new THREE.Vector3()
 
-// ✅ 재트리거(hover 들어오는 순간 감지)
+// ✅ 재트리거
 let prevHoverCylinder17 = false
 let prevHoverCircle1 = false
 
@@ -830,12 +814,10 @@ loader.load(
     model = gltf.scene
     scene.add(model)
 
-    // ✅ 강제 회전 제거
     model.rotation.set(0, 0, 0)
     model.position.set(0, 0, 0)
     model.updateMatrixWorld(true)
 
-    // ✅ 단위 자동 판정
     const box0 = new THREE.Box3().setFromObject(model)
     const size0 = box0.getSize(new THREE.Vector3())
     const maxDim0 = Math.max(size0.x, size0.y, size0.z)
@@ -843,11 +825,9 @@ loader.load(
     UNIT = maxDim0 < 10 ? 0.01 : 1
     console.log('📏 maxDim:', maxDim0, '=> UNIT:', UNIT)
 
-    // ✅ 재질 정리 + 재질 공유 끊기
     neutralizeMaterials(model)
     ensureUniqueMaterials(model)
 
-    // 카메라
     const box = new THREE.Box3().setFromObject(model)
     const center = box.getCenter(new THREE.Vector3())
     const size = box.getSize(new THREE.Vector3())
@@ -860,7 +840,6 @@ loader.load(
     allMeshes = collectMeshes(model)
     console.log('✅ meshes collected:', allMeshes.length)
 
-    // 숨김
     HIDE_MESH_NAMES.forEach((nm) => {
       const m = model.getObjectByName(nm)
       if (m) {
@@ -869,7 +848,6 @@ loader.load(
       }
     })
 
-    // POLE
     pole = model.getObjectByName(POLE_NAME)
     if (pole?.geometry) {
       pole.geometry.computeBoundingBox()
@@ -884,12 +862,10 @@ loader.load(
       console.warn('❌ pole not found or no geometry:', POLE_NAME)
     }
 
-    // bounce mesh
     bounceMesh = model.getObjectByName(BOUNCE_MESH_NAME)
     console.log('🟡 bounce mesh:', bounceMesh ? bounceMesh.name : 'NOT FOUND')
     if (bounceMesh) bounceBasePos.copy(bounceMesh.position)
 
-    // SOCKET
     socketTest = model.getObjectByName(SOCKET_NAME)
     if (socketTest) {
       socketBasePos.copy(socketTest.position)
@@ -898,14 +874,12 @@ loader.load(
       console.warn('❌ socket not found:', SOCKET_NAME)
     }
 
-    // LIGHTS map
     lightOnInfo.forEach(({ name }) => {
       const m = model.getObjectByName(name)
       if (m && m.isMesh) lightMeshes.set(name, m)
     })
     console.log('✅ lights found:', [...lightMeshes.keys()])
 
-    // morph 대상
     cube5Base = model.getObjectByName(CUBE5_BASE_NAME)
     console.log('🧬 cube5Base:', cube5Base ? cube5Base.name : 'NOT FOUND')
     if (cube5Base && cube5Base.isMesh) {
@@ -920,16 +894,11 @@ loader.load(
       }
     }
 
-    // =========================================================
-    // ✅ Cylinder17 찾기 + 기준값 저장
-    // =========================================================
     cylinder17 = model.getObjectByName(CYL17_NAME)
     console.log('🧱 Cylinder17:', cylinder17 ? cylinder17.name : 'NOT FOUND')
     if (cylinder17) {
       cylinder17AxisKey = getUpAxisKey(cylinder17)
       cylinder17BasePos.copy(cylinder17.position)
-
-      // ✅ 베이스 스케일 저장 (부모 기준 로컬 스케일)
       cyl17BaseScale.copy(cylinder17.scale)
       cyl17CurrentUpScale = 1
       cyl17TargetUpScale = 1
@@ -1013,9 +982,6 @@ loader.load(
       }
     }
 
-    // =========================================================
-    // ✅ CIRCLE1: "월드축 고정" 컨테이너 + 바닥 pivot 생성
-    // =========================================================
     circle1Mesh = model.getObjectByName(CIRCLE1_NAME)
     console.log('⚪ CIRCLE1:', circle1Mesh ? circle1Mesh.name : 'NOT FOUND')
 
@@ -1031,7 +997,6 @@ loader.load(
       }
     }
 
-    // 풍선
     balloonMesh = model.getObjectByName(BALLOON_NAME)
     console.log('🎈 balloon:', balloonMesh ? balloonMesh.name : 'NOT FOUND')
 
@@ -1083,7 +1048,19 @@ loader.load(
       pushSignByUuid.set(m.uuid, 1)
     })
 
-    // lift — ✅ UNIT 적용
+    if (circle1World) {
+      const rule = BALLOON_PUSH_RULES.find((r) => r.name === 'CIRCLE1')
+      if (rule) {
+        circle1World.name = 'CIRCLE1_WORLDCONTAINER'
+        console.log('⚪ CIRCLE1 push via world container:', circle1World.name)
+        pushMeshes.push(circle1World)
+        pushBasePos.set(circle1World.uuid, circle1World.position.clone())
+        pushMaxByUuid.set(circle1World.uuid, U(rule.max ?? BALLOON_PUSH_MAX))
+        pushAxisByUuid.set(circle1World.uuid, rule.axis ?? BALLOON_PUSH_AXIS)
+        pushSignByUuid.set(circle1World.uuid, rule.sign ?? 1)
+      }
+    }
+
     BALLOON_LIFT_NAMES.forEach((nm) => {
       const m = model.getObjectByName(nm)
       console.log('⬆️ lift target lookup:', nm, '=>', !!m)
@@ -1100,7 +1077,6 @@ loader.load(
       liftDirLocal.set(m.uuid, _tmpDir.clone())
     })
 
-    // drop — ✅ UNIT 적용
     BALLOON_DROP_NAMES.forEach((nm) => {
       const m = model.getObjectByName(nm)
       console.log('⬇️ drop target lookup:', nm, '=>', !!m)
@@ -1117,9 +1093,6 @@ loader.load(
       dropDirLocal.set(m.uuid, _tmpDir.clone())
     })
 
-    /* =========================================================
-       ✅ 저장된 attach 자동 복구 (원복 가능하도록 originalState도 같이 저장)
-    ========================================================= */
     if (socketTest) {
       const saved = localStorage.getItem(STORAGE_KEY)
       if (saved) {
@@ -1141,7 +1114,6 @@ loader.load(
 
               socketTest.attach(obj)
 
-              // ✅ Cylinder17이 저장 복구로 붙을 때도 베이스 재설정(위치+스케일)
               if (obj.name === CYL17_NAME) {
                 cylinder17BasePos.copy(obj.position)
                 cylinder17AxisKey = getUpAxisKey(obj)
@@ -1169,7 +1141,6 @@ loader.load(
       }
     }
 
-    // PIN attach (유지)
     {
       const p12 = model.getObjectByName('pasted__CUBE12')
       PIN_ATTACH.cube12.forEach((nm) => {
@@ -1192,11 +1163,6 @@ loader.load(
 
     model.updateMatrixWorld(true)
 
-    /* =========================
-       ✅ 케이블들 생성 (굵기/오프셋/중력 모두 UNIT 적용)
-    ========================= */
-
-    // cable #1
     {
       const cableA = model.getObjectByName(CABLE_A_NAME)
       const cableB = model.getObjectByName(CABLE_B_NAME)
@@ -1222,7 +1188,6 @@ loader.load(
       }
     }
 
-    // rubber pivot
     rubberMesh = model.getObjectByName(RUBBER_TARGET_NAME)
     console.log('🧽 rubber target:', rubberMesh ? rubberMesh.name : 'NOT FOUND')
 
@@ -1257,7 +1222,6 @@ loader.load(
       rubberAxisLocal.copy(WORLD_PULL_AXIS).applyMatrix4(_invRot2).normalize()
     }
 
-    // cable #2
     {
       const cable2A = model.getObjectByName(CABLE2_A_NAME)
       const cable2B = model.getObjectByName(CABLE2_B_NAME)
@@ -1283,7 +1247,6 @@ loader.load(
       }
     }
 
-    // cable #3
     {
       const cable3A = model.getObjectByName(CABLE3_A_NAME)
       const cable3B = model.getObjectByName(CABLE3_B_NAME)
@@ -1309,7 +1272,6 @@ loader.load(
       }
     }
 
-    // cable #4
     {
       const cable4A = model.getObjectByName(CABLE4_A_NAME)
       const cable4B = model.getObjectByName(CABLE4_B_NAME)
@@ -1334,8 +1296,6 @@ loader.load(
         console.log('✅ cable#4 created.')
       }
     }
-
-    window.dispatchEvent(new CustomEvent('reactive-object-ready'))
   },
   undefined,
   (err) => console.error('GLTF load error:', err)
@@ -1421,11 +1381,9 @@ window.addEventListener('keydown', (e) => {
         })
       }
 
-      // ✅ 기존 동작 유지: socket에 attach
       socketTest.attach(m)
       setSelectedVisual(m, false)
 
-      // ✅ Cylinder17은 attach 직후 "새 부모 기준" 베이스 재설정 (위치+스케일)
       if (m.name === CYL17_NAME) {
         cylinder17BasePos.copy(m.position)
         cylinder17AxisKey = getUpAxisKey(m)
@@ -1502,7 +1460,6 @@ window.addEventListener('keydown', (e) => {
       m.quaternion.copy(st.quat)
       m.scale.copy(st.scale)
 
-      // ✅ Cylinder17 detach 후에도 기준값 리셋
       if (m.name === CYL17_NAME) {
         cylinder17BasePos.copy(m.position)
         cylinder17AxisKey = getUpAxisKey(m)
@@ -1582,7 +1539,6 @@ function animate() {
         break
     }
 
-    // lights off
     lightOnInfo.forEach(({ name }) => {
       const m = lightMeshes.get(name)
       if (!m) return
@@ -1605,7 +1561,6 @@ function animate() {
           : 'default'
     }
 
-    // morph
     if (cube5Base && cube5MorphIndex >= 0 && cube5Base.morphTargetInfluences) {
       const targetW = hoverCube5Base ? CUBE5_MORPH_ON : CUBE5_MORPH_OFF
       const morphLerp = hoverCube5Base ? SPEED_CUBE5_MORPH_UP : SPEED_CUBE5_MORPH_DOWN
@@ -1613,7 +1568,6 @@ function animate() {
       cube5Base.morphTargetInfluences[cube5MorphIndex] = cube5MorphValue
     }
 
-    // balloon scale + push/lift/drop(풍선)
     if (balloonPivot) {
       const baseTarget = hoverBalloon ? 3 : 1.0
       const breathe = hoverBalloon ? Math.sin(performance.now() * 0.01) * 0.03 : 0.0
@@ -1625,10 +1579,10 @@ function animate() {
         z: balloonBasePivotScale.z,
       }
 
-        ;['x', 'y', 'z'].forEach((k) => {
-          if (k === balloonUpAxisKey) s[k] *= 1.0
-          else s[k] *= target
-        })
+      ;['x', 'y', 'z'].forEach((k) => {
+        if (k === balloonUpAxisKey) s[k] *= 1.0
+        else s[k] *= target
+      })
 
       const balloonScaleLerp = hoverBalloon ? SPEED_BALLOON_SCALE_UP : SPEED_BALLOON_SCALE_DOWN
       balloonPivot.scale.x = THREE.MathUtils.lerp(balloonPivot.scale.x, s.x, balloonScaleLerp)
@@ -1642,10 +1596,10 @@ function animate() {
       if (pushMeshes.length) {
         pushMeshes.forEach((m) => {
           const base = pushBasePos.get(m.uuid)
-          const max = pushMaxByUuid.get(m.uuid) ?? U(BALLOON_PUSH_MAX)
           if (!base) return
           const axis = pushAxisByUuid.get(m.uuid) ?? BALLOON_PUSH_AXIS
           const sign = pushSignByUuid.get(m.uuid) ?? 1
+          const max = pushMaxByUuid.get(m.uuid) ?? U(BALLOON_PUSH_MAX)
           const offset = max * t * sign
 
           const targetPos = base.clone()
@@ -1684,7 +1638,6 @@ function animate() {
       }
     }
 
-    // rubber
     if (rubberPivot) {
       const wiggle = hoverRubber ? Math.sin(performance.now() * 0.012) * RUBBER_WIGGLE : 0.0
       const ang = hoverRubber ? -(RUBBER_PULL_ANGLE + wiggle) : 0.0
@@ -1705,17 +1658,16 @@ function animate() {
       const stretch = hoverRubber ? RUBBER_STRETCH : 1.0
       const squash = hoverRubber ? RUBBER_SQUASH : 1.0
 
-        ;['x', 'y', 'z'].forEach((k) => {
-          if (k === rubberRightAxisKey) sc[k] *= stretch
-          else sc[k] *= squash
-        })
+      ;['x', 'y', 'z'].forEach((k) => {
+        if (k === rubberRightAxisKey) sc[k] *= stretch
+        else sc[k] *= squash
+      })
 
       rubberPivot.scale.x = THREE.MathUtils.lerp(rubberPivot.scale.x, sc.x, rubberLerp)
       rubberPivot.scale.y = THREE.MathUtils.lerp(rubberPivot.scale.y, sc.y, rubberLerp)
       rubberPivot.scale.z = THREE.MathUtils.lerp(rubberPivot.scale.z, sc.z, rubberLerp)
     }
 
-    // pole + bounce
     if (pole && poleBB) {
       const targetScale = hoverPole ? poleOriginScale * 1.6 : poleOriginScale
       const poleLerp = hoverPole ? SPEED_POLE_SCALE_UP : SPEED_POLE_SCALE_DOWN
@@ -1747,9 +1699,6 @@ function animate() {
       }
     }
 
-    // =========================================================
-    // ✅ Cylinder17: hover 시 위아래 + "상하축만" 납작(스케일 Y만 감소)
-    // =========================================================
     if (cylinder17) {
       const justEntered = hoverCylinder17 && !prevHoverCylinder17
 
@@ -1758,10 +1707,8 @@ function animate() {
         cyl17Time = 0
       }
 
-      // ✅ 스케일 목표(hover 중엔 납작, 아니면 원복)
       cyl17TargetUpScale = hoverCylinder17 ? CYL17_HOVER_UP_SCALE : 1
 
-      // ✅ 상하 반복(hover 들어온 순간 시작 → hover 끝나도 CYL17_CYCLES만큼 계속)
       if (cyl17Started) {
         const totalDuration = CYL17_CYCLES / CYL17_CYCLES_PER_SEC
         cyl17Time += dt
@@ -1794,7 +1741,6 @@ function animate() {
         cyl17CurrentUpScale = THREE.MathUtils.lerp(cyl17CurrentUpScale, cyl17TargetUpScale, scaleAlpha)
       }
 
-      // baseScale을 기준으로, 업축만 곱하고 나머지는 그대로
       const sx = cyl17BaseScale.x
       const sy = cyl17BaseScale.y
       const sz = cyl17BaseScale.z
