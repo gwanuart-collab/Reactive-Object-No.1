@@ -5,7 +5,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 /* =========================================================
    0) 프로젝트 값 (Maya Outliner 기준 이름)
 ========================================================= */
-const MODEL_URL = `${import.meta.env.BASE_URL}model/TrafficLight12/TrafficLight12.glb`
+const MODEL_URL = `${import.meta.env.BASE_URL}model/TrafficLight12/TrafficLight13.glb`
 
 const POLE_NAME = 'POLE_MESH'
 const SOCKET_NAME = 'SOCKET_SignR'
@@ -13,36 +13,94 @@ const LIGHT_NAMES = ['LIGHT1', 'LIGHT2', 'LIGHT3']
 
 const STORAGE_KEY = 'signR_attached_names'
 
+/* =========================================================
+   속도 조정 — 커지기/늘어나기(호버 시) vs 원상복구(호버 해제 시)
+   ▶ lerp 계열: 0에 가까우면 느림, 1에 가까우면 빠름 (보통 0.05~0.5)
+   ▶ SPEED 계열(초당): 숫자 클수록 빠름 (보통 0.5~15)
+========================================================= */
+// 풍선: 커질 때(호버) / 줄어들 때(복귀)
+const SPEED_BALLOON_SCALE_UP = 0.07
+const SPEED_BALLOON_SCALE_DOWN = 0.07
+// 풍선에 따른 밀림: 밀릴 때 / 복귀
+const SPEED_BALLOON_PUSH_UP = 0.12
+const SPEED_BALLOON_PUSH_DOWN = 0.22
+// 풍선 lift·drop: 올라갈 때 / 복귀
+const SPEED_BALLOON_LIFT_DROP_UP = 0.06
+const SPEED_BALLOON_LIFT_DROP_DOWN = 0.18
+// 기둥: 커질 때 / 줄어들 때
+const SPEED_POLE_SCALE_UP = 0.06
+const SPEED_POLE_SCALE_DOWN = 0.15
+// 고무(CUBE5): 늘어날 때 / 복귀
+const SPEED_RUBBER_UP = 0.08
+const SPEED_RUBBER_DOWN = 0.2
+// CUBE5_BASE morph: 켜질 때 / 복귀
+const SPEED_CUBE5_MORPH_UP = 0.08
+const SPEED_CUBE5_MORPH_DOWN = 0.2
+// Cylinder17: 위치 보간 / 스케일 눌릴 때 / 스케일 복귀(초당)
+const SPEED_CYL17_POSITION = 0.1
+const SPEED_CYL17_SCALE_UP = 1.2
+const SPEED_CYL17_SCALE_DOWN = 4
+// CIRCLE1 점프 보간
+const SPEED_CIRCLE1_LERP = 0.35
+
 // =========================================================
 // ✅ [복구] Cylinder17: 1회 hover로 시작 → 마우스 떼도 x번 상하 반복
 // =========================================================
 const CYL17_NAME = 'Cylinder17'
+const CYL40_FOLLOW_NAME = 'Cylinder40'  // Cylinder17에 붙어서 같이 움직이되, 스케일은 유지
+
+// Cylinder25: Cylinder24–Cylinder26 연결 관절. Cylinder26 고정, Cylinder25가 Cylinder26 접점을 축으로 회전
+const CYL24_NAME = 'Cylinder24'
+const CYL25_JOINT_NAME = 'Cylinder25'
+const CYL26_FIXED_NAME = 'Cylinder26'
+const CYL25_JOINT_BEND_ANGLE = 0.6   // 호버 시 꺾이는 각도(라디안)
+const CYL25_JOINT_LERP = 0.1
+// 관절 회전축(힌지) 지정 — 정확히 고정하려면 여기서 설정
+// 'world_x' | 'world_y' | 'world_z' → 월드 방향 (1,0,0) (0,1,0) (0,0,1)
+// 'local_x' | 'local_y' | 'local_z' → Cylinder26 로컬 축을 월드로 변환한 방향
+const CYL25_JOINT_HINGE = 'world_y'
 
 // 몇 번 반복? (1 = 위아래 한 사이클)
 const CYL17_CYCLES = 3
 
 // 상하 이동량(최대 진폭) — UNIT 자동 적용됨
-const CYL17_MOVE_AMPLITUDE = 20
+const CYL17_MOVE_AMPLITUDE = 5
+
+// 반복하면서 점점 진폭이 줄어드는 정도 (1이면 유지, 0.9면 한 사이클마다 0.9배)
+const CYL17_AMPLITUDE_DECAY = 0.9
 
 // 속도(1초에 몇 사이클?)  ex) 1.2면 1초에 1.2번 왕복
 const CYL17_CYCLES_PER_SEC = 2
-
-// 시작/복귀 보간(부드러움)
-const CYL17_LERP = 0.18
 
 // ===============================
 // ✅ Cylinder17 squash (hover scale) — "상하축만" 줄이기
 // ===============================
 
 // ✅ 상하축(업축) 스케일만 줄어드는 정도 (1 = 원래, 0.6 = 40% 납작)
-const CYL17_HOVER_UP_SCALE = 0.25
-
-// 스케일 변화 속도
-const CYL17_SCALE_LERP = 0.25
+const CYL17_HOVER_UP_SCALE = 0.6
 
 let cyl17BaseScale = new THREE.Vector3()
 let cyl17CurrentUpScale = 1
 let cyl17TargetUpScale = 1
+
+// Cylinder40: Cylinder17 따라 이동, 스케일은 항상 유지
+let cylinder40Follow = null
+const cylinder40BaseWorldScale = new THREE.Vector3()
+const _cyl17WorldScale = new THREE.Vector3()
+
+// Cylinder25 관절 (Cylinder26 고정, Cylinder25가 접점 축으로 회전)
+let cyl25Pivot = null
+const cyl25HingeAxisWorld = new THREE.Vector3()
+let cyl25JointAngleCurrent = 0
+let cyl25JointAngleTarget = 0
+const _cyl25ParentWorldQuat = new THREE.Quaternion()
+const _cyl25DesiredWorldQuat = new THREE.Quaternion()
+const _cyl25AxisAngleQ = new THREE.Quaternion()
+const cyl25PivotBaseWorldQuat = new THREE.Quaternion()
+// Cylinder25 회전축 시각화: 피벗 점 + 축 방향 선
+let cyl25AxisHelper = null
+const CYL25_AXIS_POINT_SIZE = 0.01
+const CYL25_AXIS_LINE_LENGTH = 8
 
 // =========================================================
 // ✅ [단순화] CIRCLE1: hover 시 "월드 수직(Y)로만" 공처럼 반복 점프
@@ -58,9 +116,6 @@ const CIRCLE1_BOUNCE_HEIGHT = 15
 // 속도(1초에 몇 사이클?)
 const CIRCLE1_CYCLES_PER_SEC = 2.2
 
-// (유지) 보간(부드러움)
-const CIRCLE1_LERP = 0.5
-
 const CIRCLE1_BOUNCE_DECAY = 0.85
 const CIRCLE1_STRETCH = 1.5
 const CIRCLE1_SQUASH = 0.35
@@ -68,12 +123,26 @@ const CIRCLE1_SQUASH = 0.35
 // ✅ 풍선 메쉬
 const BALLOON_NAME = 'pasted__Cylinder5'
 
-// ✅ 풍선이 커질 때 옆으로 밀릴 메쉬들
-const BALLOON_PUSH_NAMES = ['pasted__CUBE12', 'pasted__CUBE11', 'pasted__CUBE10', 'CUBE2', 'CUBE8']
+// ✅ 풍선이 커질 때 밀릴 메쉬들 (개별 축/세기/방향)
+// - CUBE12 / CUBE11 / CUBE10: x+ 방향으로 밀림
+// - CIRCLE1 / Cylinder11 / Cylinder9 / CUBE4 / Cylinder8 / Cylinder10:
+//   x- 방향으로 밀림 (위 3개와 반대 방향)
 const BALLOON_PUSH_AXIS = 'x'
 const BALLOON_PUSH_MAX = 15
+const BALLOON_PUSH_RULES = [
+  { name: 'pasted__CUBE12', axis: 'x', max: 15, sign: +1 },
+  { name: 'pasted__CUBE11', axis: 'x', max: 15, sign: +1 },
+  { name: 'pasted__CUBE10', axis: 'x', max: 15, sign: +1 },
 
-// ✅ 풍선 핀(7/8): 밀림 (attach X)
+  { name: 'CIRCLE1', axis: 'x', max: 15, sign: -1 },
+  { name: 'Cylinder11', axis: 'x', max: 15, sign: -1 },
+  { name: 'Cylinder9', axis: 'x', max: 15, sign: -1 },
+  { name: 'CUBE4', axis: 'x', max: 15, sign: -1 },
+  { name: 'Cylinder8', axis: 'x', max: 15, sign: -1 },
+  { name: 'Cylinder10', axis: 'x', max: 15, sign: -1 },
+]
+
+// ✅ 풍선 핀(7/8): 밀림 (attach X) — CUBE12/11/10 과 같은 방향(x+)
 const BALLOON_PIN_PUSH_NAMES = ['pasted__PIN7', 'pasted__PIN8']
 const BALLOON_PIN_PUSH_MAX = 14.7
 
@@ -123,7 +192,6 @@ const RUBBER_TARGET_NAME = 'CUBE5'
 const RUBBER_STRETCH = 1.35
 const RUBBER_SQUASH = 0.85
 const RUBBER_PULL_ANGLE = 0.55
-const RUBBER_LERP = 0.14
 const RUBBER_WIGGLE = 0.1
 
 // =========================================================
@@ -144,14 +212,12 @@ const BOUNCE_STRENGTH = 4.0
 const BOUNCE_DAMPING = 0.82
 const BOUNCE_SPRING = 0.2
 const BOUNCE_MAX_OFFSET = 2.5
-
 // =========================================================
 // ✅ CUBE5_BASE morph
 // =========================================================
 const CUBE5_BASE_NAME = 'CUBE5_BASE'
 const CUBE5_MORPH_ON = 1.0
 const CUBE5_MORPH_OFF = 0.0
-const CUBE5_MORPH_LERP = 0.14
 
 // =========================================================
 // ✅ 필요시 숨김
@@ -601,6 +667,13 @@ function getUpAxisKey(obj) {
   return 'z'
 }
 
+function getWorldAxis(obj, axisKey) {
+  obj.updateMatrixWorld(true)
+  _rotM.extractRotation(obj.matrixWorld)
+  const v = new THREE.Vector3(axisKey === 'x' ? 1 : 0, axisKey === 'y' ? 1 : 0, axisKey === 'z' ? 1 : 0)
+  return v.applyMatrix4(_rotM).normalize()
+}
+
 function getAxisKeyClosestToWorld(obj, worldDir) {
   obj.updateMatrixWorld(true)
   _rotM.extractRotation(obj.matrixWorld)
@@ -663,6 +736,8 @@ const UV = (v3) => v3.clone().multiplyScalar(UNIT)
 const pushMeshes = []
 const pushBasePos = new Map()
 const pushMaxByUuid = new Map()
+const pushAxisByUuid = new Map()
+const pushSignByUuid = new Map()
 
 const liftMeshes = []
 const liftBasePos = new Map()
@@ -858,6 +933,84 @@ loader.load(
       cyl17BaseScale.copy(cylinder17.scale)
       cyl17CurrentUpScale = 1
       cyl17TargetUpScale = 1
+
+      // Cylinder40을 Cylinder17에 붙여서 같이 움직이게 (위치만 따라가고, 스케일은 유지)
+      const cyl40 = model.getObjectByName(CYL40_FOLLOW_NAME)
+      if (cyl40 && cyl40 !== cylinder17) {
+        attachKeepWorld(cylinder17, cyl40)
+        model.updateMatrixWorld(true)
+        cyl40.updateMatrixWorld(true)
+        cyl40.matrixWorld.decompose(_tmpWP, _tmpWQ, cylinder40BaseWorldScale)
+        cylinder40Follow = cyl40
+        console.log('🔗 Cylinder40 follows Cylinder17, scale preserved:', cylinder40BaseWorldScale.toArray().map((v) => v.toFixed(3)))
+      }
+    }
+
+    // =========================================================
+    // ✅ Cylinder25 관절: Cylinder26 고정, Cylinder25가 Cylinder26 접점을 축으로 회전
+    // =========================================================
+    const cyl24 = model.getObjectByName(CYL24_NAME)
+    const cyl25 = model.getObjectByName(CYL25_JOINT_NAME)
+    const cyl26 = model.getObjectByName(CYL26_FIXED_NAME)
+    if (cyl24 && cyl25 && cyl26) {
+      cyl26.updateMatrixWorld(true)
+      cyl25.updateMatrixWorld(true)
+      // 축 정확 지정: 월드 고정 또는 Cylinder26 로컬 축
+      const hinge = CYL25_JOINT_HINGE
+      if (hinge === 'world_x') cyl25HingeAxisWorld.set(1, 0, 0)
+      else if (hinge === 'world_y') cyl25HingeAxisWorld.set(0, 1, 0)
+      else if (hinge === 'world_z') cyl25HingeAxisWorld.set(0, 0, 1)
+      else if (hinge === 'local_x' || hinge === 'local_y' || hinge === 'local_z') {
+        const key = hinge.replace('local_', '')
+        cyl25HingeAxisWorld.copy(getWorldAxis(cyl26, key))
+      } else {
+        // fallback: 예전처럼 Cylinder25의 월드 Y에 가장 가까운 축
+        const hingeKey = getUpAxisKey(cyl25)
+        cyl25HingeAxisWorld.copy(getWorldAxis(cyl25, hingeKey))
+      }
+      cyl25HingeAxisWorld.normalize()
+      const pivotParent = cyl26.parent
+      if (pivotParent) {
+        cyl25Pivot = new THREE.Object3D()
+        cyl25Pivot.name = 'CYL25_JOINT_PIVOT'
+        const worldPos = new THREE.Vector3()
+        cyl26.getWorldPosition(worldPos)
+        pivotParent.updateMatrixWorld(true)
+        pivotParent.worldToLocal(worldPos)
+        cyl25Pivot.position.copy(worldPos)
+        pivotParent.add(cyl25Pivot)
+        cyl25Pivot.updateMatrixWorld(true)
+        attachKeepWorld(cyl25Pivot, cyl25)
+        cyl25Pivot.getWorldQuaternion(cyl25PivotBaseWorldQuat)
+        const cyl25WasChildOf = cyl24.parent
+        if (cyl24.parent !== cyl25) {
+          attachKeepWorld(cyl25, cyl24)
+        }
+        _cyl25ParentWorldQuat.copy(cyl25Pivot.quaternion)
+        pivotParent.getWorldQuaternion(_cyl25ParentWorldQuat)
+        console.log('🔗 Cylinder25 joint: hinge=', CYL25_JOINT_HINGE, 'axis (world):', cyl25HingeAxisWorld.toArray().map((v) => v.toFixed(3)))
+
+        // 회전축 시각화: 피벗 위치 점 + 축 방향 선
+        const axisColor = 0xff2222
+        const pointGeom = new THREE.SphereGeometry(CYL25_AXIS_POINT_SIZE, 12, 8)
+        const pointMat = new THREE.MeshBasicMaterial({ color: axisColor })
+        const pointMesh = new THREE.Mesh(pointGeom, pointMat)
+        const lineGeom = new THREE.BufferGeometry().setFromPoints([
+          new THREE.Vector3(0, 0, 0),
+          new THREE.Vector3(
+            cyl25HingeAxisWorld.x * CYL25_AXIS_LINE_LENGTH,
+            cyl25HingeAxisWorld.y * CYL25_AXIS_LINE_LENGTH,
+            cyl25HingeAxisWorld.z * CYL25_AXIS_LINE_LENGTH
+          ),
+        ])
+        const lineMat = new THREE.LineBasicMaterial({ color: axisColor, linewidth: 2 })
+        const line = new THREE.Line(lineGeom, lineMat)
+        cyl25AxisHelper = new THREE.Group()
+        cyl25AxisHelper.name = 'CYL25_AXIS_HELPER'
+        cyl25AxisHelper.add(pointMesh)
+        cyl25AxisHelper.add(line)
+        scene.add(cyl25AxisHelper)
+      }
     }
 
     // =========================================================
@@ -905,24 +1058,29 @@ loader.load(
       console.log('🎈 balloon pivot ready. up-axis =', balloonUpAxisKey)
     }
 
-    // push (CUBE들) — ✅ UNIT 적용
-    BALLOON_PUSH_NAMES.forEach((nm) => {
-      const m = model.getObjectByName(nm)
-      console.log('🧱 push target lookup:', nm, '=>', !!m)
+    // push (CUBE들) — ✅ UNIT 적용 + 개별 축/방향
+    BALLOON_PUSH_RULES.forEach((rule) => {
+      // CIRCLE1은 makeWorldBottomPivot()로 scene 쪽으로 이동하므로 scene에서도 찾기
+      const m = model.getObjectByName(rule.name) || scene.getObjectByName(rule.name)
+      console.log('🧱 push target lookup:', rule.name, '=>', !!m)
       if (!m) return
       pushMeshes.push(m)
       pushBasePos.set(m.uuid, m.position.clone())
-      pushMaxByUuid.set(m.uuid, U(BALLOON_PUSH_MAX))
+      pushMaxByUuid.set(m.uuid, U(rule.max ?? BALLOON_PUSH_MAX))
+      pushAxisByUuid.set(m.uuid, rule.axis ?? BALLOON_PUSH_AXIS)
+      pushSignByUuid.set(m.uuid, rule.sign ?? 1)
     })
 
-    // push (핀 7/8) — ✅ UNIT 적용
+    // push (핀 7/8) — ✅ UNIT 적용 (x+ 방향)
     BALLOON_PIN_PUSH_NAMES.forEach((nm) => {
-      const m = model.getObjectByName(nm)
+      const m = model.getObjectByName(nm) || scene.getObjectByName(nm)
       console.log('📌 pin push target lookup:', nm, '=>', !!m)
       if (!m) return
       pushMeshes.push(m)
       pushBasePos.set(m.uuid, m.position.clone())
       pushMaxByUuid.set(m.uuid, U(BALLOON_PIN_PUSH_MAX))
+      pushAxisByUuid.set(m.uuid, BALLOON_PUSH_AXIS)
+      pushSignByUuid.set(m.uuid, 1)
     })
 
     // lift — ✅ UNIT 적용
@@ -1243,7 +1401,8 @@ window.addEventListener('click', (e) => {
   }
 
   toggleSelect(picked)
-  console.log('✅ selected toggled:', picked.name)
+  const names = [...selectedMeshes].map((m) => m.name)
+  console.log('✅ selected toggled:', picked.name, '| 현재 선택된 전체:', names.length ? names : '(없음)')
 })
 
 window.addEventListener('keydown', (e) => {
@@ -1291,23 +1450,24 @@ window.addEventListener('keydown', (e) => {
 
   if (e.key === 'Backspace') {
     e.preventDefault()
-    if (originalState.size === 0) return
+    // ✅ 선택된 개체만 소켓에서 해제(원복). 선택 없으면 동작 안 함.
+    if (selectedMeshes.size === 0) return
 
-    originalState.forEach((st, uuid) => {
-      const mesh = model.getObjectByProperty('uuid', uuid)
-      if (!mesh || !st?.parent) return
+    selectedMeshes.forEach((m) => {
+      const st = originalState.get(m.uuid)
+      if (!st || !st.parent) return
 
-      st.parent.attach(mesh)
-      mesh.position.copy(st.pos)
-      mesh.quaternion.copy(st.quat)
-      mesh.scale.copy(st.scale)
+      st.parent.attach(m)
+      m.position.copy(st.pos)
+      m.quaternion.copy(st.quat)
+      m.scale.copy(st.scale)
 
       // ✅ Cylinder17 원복 후에도 기준값 리셋
-      if (mesh.name === CYL17_NAME) {
-        cylinder17BasePos.copy(mesh.position)
-        cylinder17AxisKey = getUpAxisKey(mesh)
+      if (m.name === CYL17_NAME) {
+        cylinder17BasePos.copy(m.position)
+        cylinder17AxisKey = getUpAxisKey(m)
 
-        cyl17BaseScale.copy(mesh.scale)
+        cyl17BaseScale.copy(m.scale)
         cyl17CurrentUpScale = 1
         cyl17TargetUpScale = 1
 
@@ -1317,12 +1477,16 @@ window.addEventListener('keydown', (e) => {
         cyl17Started = false
         prevHoverCylinder17 = false
       }
+
+      originalState.delete(m.uuid)
+      setSelectedVisual(m, false)
     })
 
-    originalState.clear()
+    const attachedNames = socketTest.children.map((c) => c.name).filter(Boolean)
+    if (attachedNames.length) localStorage.setItem(STORAGE_KEY, JSON.stringify(attachedNames))
+    else localStorage.removeItem(STORAGE_KEY)
     selectedMeshes.clear()
-    localStorage.removeItem(STORAGE_KEY)
-    console.log('↩️ restored + cleared saved attach')
+    console.log('↩️ restored selected from socket. remaining attached:', attachedNames)
   }
 
   if (e.key === 'Delete' || e.key.toLowerCase() === 'x') {
@@ -1391,6 +1555,7 @@ function animate() {
 
     let hoverCylinder17 = false
     let hoverCircle1 = false
+    let hoverCylinder25 = false
 
     for (const h of hits) {
       const n = h.object?.name || ''
@@ -1402,6 +1567,7 @@ function animate() {
 
       if (n === CYL17_NAME) hoverCylinder17 = true
       if (n === CIRCLE1_NAME) hoverCircle1 = true
+      if (n === CYL25_JOINT_NAME || n === CYL24_NAME) hoverCylinder25 = true
 
       if (
         hoverPole ||
@@ -1410,7 +1576,8 @@ function animate() {
         hoverRubber ||
         hoverCube5Base ||
         hoverCylinder17 ||
-        hoverCircle1
+        hoverCircle1 ||
+        hoverCylinder25
       )
         break
     }
@@ -1441,7 +1608,8 @@ function animate() {
     // morph
     if (cube5Base && cube5MorphIndex >= 0 && cube5Base.morphTargetInfluences) {
       const targetW = hoverCube5Base ? CUBE5_MORPH_ON : CUBE5_MORPH_OFF
-      cube5MorphValue = THREE.MathUtils.lerp(cube5MorphValue, targetW, CUBE5_MORPH_LERP)
+      const morphLerp = hoverCube5Base ? SPEED_CUBE5_MORPH_UP : SPEED_CUBE5_MORPH_DOWN
+      cube5MorphValue = THREE.MathUtils.lerp(cube5MorphValue, targetW, morphLerp)
       cube5Base.morphTargetInfluences[cube5MorphIndex] = cube5MorphValue
     }
 
@@ -1462,9 +1630,10 @@ function animate() {
           else s[k] *= target
         })
 
-      balloonPivot.scale.x = THREE.MathUtils.lerp(balloonPivot.scale.x, s.x, 0.15)
-      balloonPivot.scale.y = THREE.MathUtils.lerp(balloonPivot.scale.y, s.y, 0.15)
-      balloonPivot.scale.z = THREE.MathUtils.lerp(balloonPivot.scale.z, s.z, 0.15)
+      const balloonScaleLerp = hoverBalloon ? SPEED_BALLOON_SCALE_UP : SPEED_BALLOON_SCALE_DOWN
+      balloonPivot.scale.x = THREE.MathUtils.lerp(balloonPivot.scale.x, s.x, balloonScaleLerp)
+      balloonPivot.scale.y = THREE.MathUtils.lerp(balloonPivot.scale.y, s.y, balloonScaleLerp)
+      balloonPivot.scale.z = THREE.MathUtils.lerp(balloonPivot.scale.z, s.z, balloonScaleLerp)
 
       const horizAxis = balloonUpAxisKey === 'x' ? 'z' : 'x'
       const ratio = balloonPivot.scale[horizAxis] / balloonBasePivotScale[horizAxis]
@@ -1475,19 +1644,19 @@ function animate() {
           const base = pushBasePos.get(m.uuid)
           const max = pushMaxByUuid.get(m.uuid) ?? U(BALLOON_PUSH_MAX)
           if (!base) return
-          const offset = max * t
+          const axis = pushAxisByUuid.get(m.uuid) ?? BALLOON_PUSH_AXIS
+          const sign = pushSignByUuid.get(m.uuid) ?? 1
+          const offset = max * t * sign
 
           const targetPos = base.clone()
-          targetPos[BALLOON_PUSH_AXIS] += offset
+          targetPos[axis] += offset
 
-          m.position[BALLOON_PUSH_AXIS] = THREE.MathUtils.lerp(
-            m.position[BALLOON_PUSH_AXIS],
-            targetPos[BALLOON_PUSH_AXIS],
-            0.35
-          )
+          const pushLerp = hoverBalloon ? SPEED_BALLOON_PUSH_UP : SPEED_BALLOON_PUSH_DOWN
+          m.position[axis] = THREE.MathUtils.lerp(m.position[axis], targetPos[axis], pushLerp)
         })
       }
 
+      const liftDropLerp = hoverBalloon ? SPEED_BALLOON_LIFT_DROP_UP : SPEED_BALLOON_LIFT_DROP_DOWN
       if (liftMeshes.length) {
         const lift = U(BALLOON_LIFT_MAX) * t
         liftMeshes.forEach((m) => {
@@ -1495,9 +1664,9 @@ function animate() {
           const dir = liftDirLocal.get(m.uuid)
           if (!base || !dir) return
           const targetPos = base.clone().addScaledVector(dir, lift)
-          m.position.x = THREE.MathUtils.lerp(m.position.x, targetPos.x, 0.15)
-          m.position.y = THREE.MathUtils.lerp(m.position.y, targetPos.y, 0.15)
-          m.position.z = THREE.MathUtils.lerp(m.position.z, targetPos.z, 0.15)
+          m.position.x = THREE.MathUtils.lerp(m.position.x, targetPos.x, liftDropLerp)
+          m.position.y = THREE.MathUtils.lerp(m.position.y, targetPos.y, liftDropLerp)
+          m.position.z = THREE.MathUtils.lerp(m.position.z, targetPos.z, liftDropLerp)
         })
       }
 
@@ -1508,9 +1677,9 @@ function animate() {
           const dir = dropDirLocal.get(m.uuid)
           if (!base || !dir) return
           const targetPos = base.clone().addScaledVector(dir, -drop)
-          m.position.x = THREE.MathUtils.lerp(m.position.x, targetPos.x, 0.15)
-          m.position.y = THREE.MathUtils.lerp(m.position.y, targetPos.y, 0.15)
-          m.position.z = THREE.MathUtils.lerp(m.position.z, targetPos.z, 0.15)
+          m.position.x = THREE.MathUtils.lerp(m.position.x, targetPos.x, liftDropLerp)
+          m.position.y = THREE.MathUtils.lerp(m.position.y, targetPos.y, liftDropLerp)
+          m.position.z = THREE.MathUtils.lerp(m.position.z, targetPos.z, liftDropLerp)
         })
       }
     }
@@ -1524,7 +1693,8 @@ function animate() {
       _qTmp.setFromAxisAngle(rubberAxisLocal, ang)
       rubberTargetQuat.multiply(_qTmp)
 
-      rubberPivot.quaternion.slerp(rubberTargetQuat, RUBBER_LERP)
+      const rubberLerp = hoverRubber ? SPEED_RUBBER_UP : SPEED_RUBBER_DOWN
+      rubberPivot.quaternion.slerp(rubberTargetQuat, rubberLerp)
 
       const sc = {
         x: rubberBasePivotScale.x,
@@ -1540,15 +1710,16 @@ function animate() {
           else sc[k] *= squash
         })
 
-      rubberPivot.scale.x = THREE.MathUtils.lerp(rubberPivot.scale.x, sc.x, RUBBER_LERP)
-      rubberPivot.scale.y = THREE.MathUtils.lerp(rubberPivot.scale.y, sc.y, RUBBER_LERP)
-      rubberPivot.scale.z = THREE.MathUtils.lerp(rubberPivot.scale.z, sc.z, RUBBER_LERP)
+      rubberPivot.scale.x = THREE.MathUtils.lerp(rubberPivot.scale.x, sc.x, rubberLerp)
+      rubberPivot.scale.y = THREE.MathUtils.lerp(rubberPivot.scale.y, sc.y, rubberLerp)
+      rubberPivot.scale.z = THREE.MathUtils.lerp(rubberPivot.scale.z, sc.z, rubberLerp)
     }
 
     // pole + bounce
     if (pole && poleBB) {
       const targetScale = hoverPole ? poleOriginScale * 1.6 : poleOriginScale
-      const nextScale = THREE.MathUtils.lerp(pole.scale[poleAxisKey], targetScale, 0.12)
+      const poleLerp = hoverPole ? SPEED_POLE_SCALE_UP : SPEED_POLE_SCALE_DOWN
+      const nextScale = THREE.MathUtils.lerp(pole.scale[poleAxisKey], targetScale, poleLerp)
 
       pole.scale[poleAxisKey] = nextScale
       pole.position[poleAxisKey] = poleBase - poleBB.min[poleAxisKey] * nextScale
@@ -1597,7 +1768,12 @@ function animate() {
 
         if (cyl17Time <= totalDuration) {
           const wave = Math.sin(cyl17Time * CYL17_CYCLES_PER_SEC * Math.PI * 2)
-          cyl17TargetOffset = wave * U(CYL17_MOVE_AMPLITUDE)
+
+          // 경과 시간에 따라 진폭이 점점 줄어들도록 감쇠 적용
+          const cyclesElapsed = cyl17Time * CYL17_CYCLES_PER_SEC
+          const ampDecay = Math.pow(CYL17_AMPLITUDE_DECAY, cyclesElapsed)
+
+          cyl17TargetOffset = wave * U(CYL17_MOVE_AMPLITUDE) * ampDecay
         } else {
           cyl17Started = false
           cyl17TargetOffset = 0
@@ -1606,11 +1782,17 @@ function animate() {
       }
 
       // ✅ 위치 적용
-      cyl17CurrentOffset = THREE.MathUtils.lerp(cyl17CurrentOffset, cyl17TargetOffset, CYL17_LERP)
+      cyl17CurrentOffset = THREE.MathUtils.lerp(cyl17CurrentOffset, cyl17TargetOffset, SPEED_CYL17_POSITION)
       cylinder17.position[cylinder17AxisKey] = cylinder17BasePos[cylinder17AxisKey] + cyl17CurrentOffset
 
-      // ✅ "상하축만" 스케일 적용
-      cyl17CurrentUpScale = THREE.MathUtils.lerp(cyl17CurrentUpScale, cyl17TargetUpScale, CYL17_SCALE_LERP)
+      // ✅ "상하축만" 스케일 적용 (dt 기반 속도, 복귀 시 더 빠르게)
+      const scaleSpeed = cyl17TargetUpScale >= 1 ? SPEED_CYL17_SCALE_DOWN : SPEED_CYL17_SCALE_UP
+      if (scaleSpeed <= 0) {
+        cyl17CurrentUpScale = cyl17TargetUpScale
+      } else {
+        const scaleAlpha = 1 - Math.exp(-scaleSpeed * dt)
+        cyl17CurrentUpScale = THREE.MathUtils.lerp(cyl17CurrentUpScale, cyl17TargetUpScale, scaleAlpha)
+      }
 
       // baseScale을 기준으로, 업축만 곱하고 나머지는 그대로
       const sx = cyl17BaseScale.x
@@ -1625,7 +1807,33 @@ function animate() {
         cylinder17.scale.set(sx, sy, sz * cyl17CurrentUpScale)
       }
 
+      // Cylinder40: 부모(Cylinder17) 스케일이 바뀌어도 월드 스케일 유지 (줄어들지 않음)
+      if (cylinder40Follow) {
+        cylinder17.updateMatrixWorld(true)
+        cylinder17.matrixWorld.decompose(_tmpWP, _tmpWQ, _cyl17WorldScale)
+        cylinder40Follow.scale.x = cylinder40BaseWorldScale.x / (_cyl17WorldScale.x || 1e-6)
+        cylinder40Follow.scale.y = cylinder40BaseWorldScale.y / (_cyl17WorldScale.y || 1e-6)
+        cylinder40Follow.scale.z = cylinder40BaseWorldScale.z / (_cyl17WorldScale.z || 1e-6)
+      }
+
       prevHoverCylinder17 = hoverCylinder17
+    }
+
+    // ✅ Cylinder25 관절: hover 시 pivot만 회전 (Cylinder26 고정)
+    if (cyl25Pivot) {
+      cyl25JointAngleTarget = hoverCylinder25 ? CYL25_JOINT_BEND_ANGLE : 0
+      cyl25JointAngleCurrent = THREE.MathUtils.lerp(cyl25JointAngleCurrent, cyl25JointAngleTarget, CYL25_JOINT_LERP)
+      _cyl25AxisAngleQ.setFromAxisAngle(cyl25HingeAxisWorld, cyl25JointAngleCurrent)
+      _cyl25DesiredWorldQuat.copy(cyl25PivotBaseWorldQuat).multiply(_cyl25AxisAngleQ)
+      const parent = cyl25Pivot.parent
+      if (parent) {
+        parent.getWorldQuaternion(_cyl25ParentWorldQuat).invert()
+        cyl25Pivot.quaternion.copy(_cyl25ParentWorldQuat).multiply(_cyl25DesiredWorldQuat)
+      }
+      // 회전축 시각화: 피벗 월드 위치에 맞춤
+      if (cyl25AxisHelper) {
+        cyl25Pivot.getWorldPosition(cyl25AxisHelper.position)
+      }
     }
 
     // CIRCLE1 bounce
@@ -1659,7 +1867,7 @@ function animate() {
           const down = Math.max(0, -raw)
 
           const targetY = up * amp
-          circle1CurY = THREE.MathUtils.lerp(circle1CurY, targetY, CIRCLE1_LERP)
+          circle1CurY = THREE.MathUtils.lerp(circle1CurY, targetY, SPEED_CIRCLE1_LERP)
           circle1Pivot.position.y += circle1CurY
 
           const stretchT = up
