@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
+import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { parseGIF, decompressFrames } from 'gifuct-js'
 
@@ -7,7 +8,7 @@ import { parseGIF, decompressFrames } from 'gifuct-js'
    0) 프로젝트 값 (Maya Outliner 기준 이름)
 ========================================================= */
 // Vite dev: base '/', prod: '/Reactive-Object-No.1/'. public 폴더가 base 아래로 서빙됨.
-const MODEL_URL = (import.meta.env.BASE_URL || '/').replace(/\/?$/, '') + '/model/TrafficLight12/TrafficLight25.glb'
+const MODEL_URL = (import.meta.env.BASE_URL || '/').replace(/\/?$/, '') + '/model/TrafficLight12/TrafficLight25_2k_final.glb'
 /** 마야 단위 보정. GLB가 마야 cm 기준이면 1단위=1m로 쓰려면 0.01, 그대로 쓰면 1 */
 const MODEL_UNIT_SCALE = 1
 
@@ -439,7 +440,7 @@ const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerH
 const renderer = new THREE.WebGLRenderer({ antialias: true })
 renderer.setSize(window.innerWidth, window.innerHeight)
 renderer.shadowMap.enabled = true
-renderer.shadowMap.type = THREE.PCFSoftShadowMap
+renderer.shadowMap.type = THREE.PCFShadowMap
 renderer.outputColorSpace = THREE.SRGBColorSpace
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
 document.body.style.margin = '0'
@@ -1051,9 +1052,11 @@ window.addEventListener('keydown', (e) => {
 ========================================================= */
 const raycaster = new THREE.Raycaster()
 const mouse = new THREE.Vector2()
+let _mouseDirty = false
 window.addEventListener('mousemove', (e) => {
   mouse.x = (e.clientX / window.innerWidth) * 2 - 1
   mouse.y = -(e.clientY / window.innerHeight) * 2 + 1
+  _mouseDirty = true
 })
 
 /* =========================================================
@@ -1327,16 +1330,16 @@ class Cable {
   constructor({
     startObj,
     endObj,
-    segments = 50,      // 전선을 이루는 구간(마디) 개수. 많을수록 부드럽고 무거움
-    radius = 0.3,      // 전선 튜브의 굵기(반지름)
-    slack = 1.5,       // 처짐 정도. 1=직선에 가깝고, 클수록 더 늘어짐
-    gravity = 2,     // 아래로 당기는 힘(중력) 세기
-    damping = 0.95,    // 감쇠(0~1). 1에 가까울수록 흔들림이 빨리 줄어듦
-    iterations = 12,   // 한 프레임당 물리 반복 횟수. 많을수록 안정, 비용 증가
+    segments = 50,
+    radius = 0.3,
+    slack = 1.5,
+    gravity = 2,
+    damping = 0.95,
+    iterations = 12,
     color = 0xcccccc,
     parent = null,
-    colliders = [],    // 충돌할 메쉬 배열. 전선이 이 오브젝트를 뚫고 지나가지 않음
-    bounce = 0.2,      // 충돌 시 튕겨나오는 정도 (0=안 튐, 1=완전 반사)
+    colliders = [],
+    bounce = 0.2,
   }) {
     this.startObj = startObj
     this.endObj = endObj
@@ -1683,7 +1686,10 @@ const AUTO_LIGHT_HOVER_PAUSE = 5
 /* =========================================================
    8) 모델 로드 + 세팅
 ========================================================= */
+const dracoLoader = new DRACOLoader()
+dracoLoader.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.7/')
 const loader = new GLTFLoader()
+loader.setDRACOLoader(dracoLoader)
 
 /** #status 로딩 문구 (index.html). 큰 GLB는 네트워크+디코딩에 시간이 걸림 */
 function setLoadingStatus(visible, text) {
@@ -3250,6 +3256,10 @@ window.addEventListener('keydown', (e) => {
    10) 애니메이션 루프
 ========================================================= */
 let _prevT = performance.now()
+/** 레이캐스트 스로틀: 마우스 이동 시에만, 최대 30fps로 레이캐스트 */
+const RAYCAST_INTERVAL_MS = 33 // ~30fps
+let _lastRaycastTime = 0
+let _cachedHits = []
 /** LIGHT1/2/3 호버 시 재생용. public/sound/light-hover.mp3 */
 const lightHoverSound = new Audio(LIGHT_HOVER_SOUND_URL)
 lightHoverSound.preload = 'none'
@@ -3278,6 +3288,13 @@ popballSound.preload = 'none'
 const HOVER_COOLDOWN_MS = 450
 let _lastHoverSoundTime = 0
 /** 브라우저 정책: 한 번이라도 사용자 클릭 후에만 소리 재생 가능 */
+/** 폴 원샷: 한번 호버하면 끝까지 늘어났다가 복귀. 'idle'→'growing'→'holding'→'returning'→'cooldown'→'idle' */
+let _polePhase = 'idle'
+const POLE_HOLD_DURATION = 0.15 // 최대 스케일에서 유지하는 시간(초)
+const POLE_COOLDOWN_MS = 300   // 복귀 후 재트리거 방지 딜레이
+let _poleHoldTimer = 0
+let _poleSoundPlayed = false
+let _poleCooldownUntil = 0
 let _lightSoundUnlocked = false
 function unlockLightHoverSound() {
   if (_lightSoundUnlocked) return
@@ -3350,14 +3367,18 @@ function animate() {
       const f = plane12GifFrames[plane12GifFrameIndex]
       plane12GifNextFrameTime = now + (f.delay || 50)
       plane12GifFrameIndex = (plane12GifFrameIndex + 1) % plane12GifFrames.length
-      plane12GifCtx.clearRect(0, 0, plane12GifWidth, plane12GifHeight)
-      for (let i = 0; i <= plane12GifFrameIndex; i++) {
-        const fr = plane12GifFrames[i]
-        const d = fr.dims
+      // 현재 프레임만 그리기 (0~index 전체를 반복하지 않음)
+      const fr = plane12GifFrames[plane12GifFrameIndex]
+      const d = fr.dims
+      if (d.width === plane12GifWidth && d.height === plane12GifHeight) {
+        plane12GifCtx.putImageData(
+          new ImageData(new Uint8ClampedArray(fr.patch), d.width, d.height), 0, 0
+        )
+      } else {
+        plane12GifCtx.clearRect(0, 0, plane12GifWidth, plane12GifHeight)
         plane12GifCtx.putImageData(
           new ImageData(new Uint8ClampedArray(fr.patch), d.width, d.height),
-          d.left,
-          d.top
+          d.left, d.top
         )
       }
       plane12GifTexture.needsUpdate = true
@@ -3365,8 +3386,15 @@ function animate() {
   }
 
   if (model && allMeshes.length) {
-    raycaster.setFromCamera(mouse, camera)
-    const hits = raycaster.intersectObjects(allMeshes, true)
+    // 스로틀: 마우스 이동 또는 폴 호버 중(기둥이 자라면서 오브젝트 위치 변동)일 때 레이캐스트 갱신
+    const _needsRaycast = _mouseDirty || _polePhase !== 'idle'
+    if (_needsRaycast && now - _lastRaycastTime >= RAYCAST_INTERVAL_MS) {
+      _mouseDirty = false
+      _lastRaycastTime = now
+      raycaster.setFromCamera(mouse, camera)
+      _cachedHits = raycaster.intersectObjects(allMeshes, true)
+    }
+    const hits = _cachedHits
 
     let hoverPole = false
     let hoverLightName = null
@@ -3377,13 +3405,34 @@ function animate() {
     let hoverCylinder17 = false
     let hoverCircle1 = false
     let hoverCUBE8Chain = false
-    // 가장 가까운 첫 번째 히트만 사용해, 레이가 물체를 통과해 여러 개가 동시에 반응하는 것 방지
+    // 폴은 레이 전체 히트에서 찾음 (앞에 부착 오브젝트가 가려도 호버 유지)
+    // 단, 첫 히트가 고유 인터랙션 오브젝트(전구 등)이면 폴 검색 스킵
+    const _firstN = hits[0]?.object?.name || ''
+    const _firstIsInteractive =
+      LIGHT_NAMES.includes(_firstN) || _firstN === 'pasted__LIGHT2' ||
+      _firstN.endsWith('_LIGHT1') || _firstN.endsWith('_LIGHT2') || _firstN.endsWith('_LIGHT3') ||
+      BALLOON_HOVER_NAMES.includes(_firstN) ||
+      _firstN === RUBBER_TARGET_NAME ||
+      _firstN === CUBE5_BASE_NAME || _firstN === PCUBE1_NAME || (_firstN && _firstN.includes('pCube1')) ||
+      TYPE_MESH1_NAMES.includes(_firstN) || (_firstN && _firstN.includes('typeMesh1')) ||
+      _firstN === CYL17_NAME || _firstN === CIRCLE1_NAME ||
+      _firstN === ROBOT_ARM_TRIGGER_NAME || _firstN.endsWith(ROBOT_ARM_TRIGGER_NAME)
+    if (!_firstIsInteractive) {
+      for (let hi = 0; hi < hits.length; hi++) {
+        const hn = hits[hi].object?.name || ''
+        if (hn === POLE_NAME || hn === 'Cylinder6' || hn === 'pasted__Cylinder6' || hn === 'Cylinder7' || hn === 'pasted__Cylinder7') {
+          hoverPole = true
+          break
+        }
+      }
+    }
+    // 레이캐스트 원본 결과 저장 (poleActive가 덮어쓰기 전)
+    const _rawHoverPole = hoverPole
+    // 나머지 인터랙션은 첫 번째 히트만 사용 (폴 호버 중이면 전구 호버 무시 — 폴이 늘어나며 LIGHT가 앞으로 온 것)
     const first = hits[0]
     if (first?.object) {
       const n = first.object.name || ''
-      if (n === POLE_NAME) hoverPole = true
-      else if (n === 'Cylinder6' || n === 'pasted__Cylinder6' || n === 'Cylinder7' || n === 'pasted__Cylinder7') hoverPole = true
-      else if (LIGHT_NAMES.includes(n)) hoverLightName = n
+      if (LIGHT_NAMES.includes(n)) hoverLightName = n
       else if (n === 'pasted__LIGHT2') hoverLightName = 'pasted__LIGHT2'
       else if (n === 'LIGHT1' || n.endsWith('_LIGHT1')) hoverLightName = 'LIGHT1'
       else if (n === 'LIGHT2' || n.endsWith('_LIGHT2')) hoverLightName = 'LIGHT2'
@@ -3483,16 +3532,25 @@ function animate() {
           : 'default'
     }
 
-    // 폴 호버 시 LIGHT1에 불 들어옴 + 전구 호버 사운드 (LIGHT1 호버와 같은 효과)
-    if (hoverPole) {
-      if (!_prevHoverPole) {
-        _prevHoverPole = true
-        if (now - _lastHoverSoundTime >= HOVER_COOLDOWN_MS) {
-          _lastHoverSoundTime = now
-          lightHoverSound.currentTime = 0
-          lightHoverSound.play().catch(() => {})
-        }
+    // 폴 상태 전환: idle→growing→holding(호버 유지 시 고정)→returning→idle
+    if (hoverPole && _polePhase === 'idle' && now >= _poleCooldownUntil) {
+      _polePhase = 'growing'
+      _poleSoundPlayed = false
+    }
+    // growing 중 최대에 도달하면 holding
+    // holding 중 호버 유지 → 고정, 호버 떼면 → returning
+    // returning 중 원래로 복귀하면 idle
+    const poleActive = _polePhase === 'growing' || _polePhase === 'holding'
+    if (poleActive) hoverPole = true
+
+    // 폴 호버 시 LIGHT1에 불 들어옴 + 사운드 한번만
+    if (poleActive || _polePhase === 'returning') {
+      if (!_poleSoundPlayed) {
+        _poleSoundPlayed = true
+        lightHoverSound.currentTime = 0
+        lightHoverSound.play().catch(() => {})
       }
+      _prevHoverPole = true
       const info = lightOnInfo.find((x) => x.name === 'LIGHT1')
       const mesh = lightMeshes.get('LIGHT1')
       if (info && mesh) {
@@ -3721,7 +3779,7 @@ function animate() {
 
     if (pole && poleBB) {
       const curScale = pole.scale[poleAxisKey]
-      if (hoverPole) {
+      if (_polePhase === 'growing' || _polePhase === 'holding') {
         poleReturnReboundTriggered = false
         cylinder6ReboundTriggered = false
         cylinder7ReboundTriggered = false
@@ -3767,7 +3825,24 @@ function animate() {
           if (teamRebounds[t] < POLE_RETURN_REBOUND_CUTOFF) teamRebounds[t] = 0
         }
       }
-      const targetScale = hoverPole ? poleOriginScale * 1.6 : poleOriginScale + poleReturnRebound
+      // 폴 상태 전환
+      // growing → 최대 도달 시 holding
+      if (_polePhase === 'growing' && curScale >= poleOriginScale * 1.58) {
+        _polePhase = 'holding'
+      }
+      // holding → 레이캐스트에서 폴이 아직 잡히면 고정 유지, 안 잡히면 returning
+      // (주의: poleActive가 hoverPole을 true로 덮어쓰므로, 원래 레이캐스트 결과를 확인)
+      if (_polePhase === 'holding' && !_rawHoverPole) {
+        _polePhase = 'returning'
+      }
+      // returning → 원래 크기로 돌아오면 idle + 쿨다운 시작
+      if (_polePhase === 'returning' && curScale <= poleOriginScale * 1.01) {
+        _polePhase = 'idle'
+        _poleCooldownUntil = now + POLE_COOLDOWN_MS
+      }
+
+      const poleGrow = _polePhase === 'growing' || _polePhase === 'holding'
+      const targetScale = poleGrow ? poleOriginScale * 1.6 : poleOriginScale + poleReturnRebound
       const nextScale = THREE.MathUtils.lerp(curScale, targetScale, 0.12)
 
       pole.scale[poleAxisKey] = nextScale
@@ -3798,11 +3873,11 @@ function animate() {
         if (capMesh) capMesh.position[poleAxisKey] = capBase[poleAxisKey] - distT
       }
 
-      if (hoverPole && !hasBounced && nextScale > poleOriginScale * 1.58) {
+      if (poleGrow && !hasBounced && nextScale > poleOriginScale * 1.58) {
         bounceVel = U(BOUNCE_STRENGTH)
         hasBounced = true
       }
-      if (!hoverPole) hasBounced = false
+      if (_polePhase === 'idle') hasBounced = false
 
       if (bounceMesh) {
         const springForce = -bounceOffset * BOUNCE_SPRING
