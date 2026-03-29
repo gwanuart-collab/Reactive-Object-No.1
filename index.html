@@ -17,27 +17,30 @@
       }
 
       #app {
-        width: 100%;
-        height: 100%;
+        position: fixed;
+        inset: 16px;
+        overflow: hidden;
+        border-radius: 14px;
       }
 
       canvas {
         display: block;
         width: 100%;
         height: 100%;
+        border-radius: inherit;
       }
 
       #hud {
         position: fixed;
-        left: 12px;
-        bottom: 12px;
+        right: 12px;
+        top: 12px;
         z-index: 10;
-        font: 12px/1.4 system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+        font: 16px/1.5 system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
         color: rgba(255, 255, 255, 0.82);
         background: rgba(0, 0, 0, 0.35);
         border: 1px solid rgba(255, 255, 255, 0.08);
-        border-radius: 10px;
-        padding: 10px 12px;
+        border-radius: 12px;
+        padding: 14px 18px;
         backdrop-filter: blur(8px);
         user-select: none;
       }
@@ -65,12 +68,11 @@
   </head>
   <body>
     <div id="app"></div>
-    <div id="status">Reactive Object No.1 로딩 중…</div>
+    <div id="status" style="display: none;">Reactive Object No.1 로딩 중…</div>
     <div id="hud">
       <div><strong>Reactive Object No.1</strong></div>
-      <div><strong>조작</strong>: 마우스 드래그(회전) / 휠(줌) / 패닝</div>
-      <div><strong>선택</strong>: Shift+클릭</div>
-      <div><strong>부착</strong>: Enter / <strong>복구</strong>: Backspace / <strong>선택 해제</strong>: Delete 또는 X</div>
+      <div>마우스를 올리면 반응합니다.</div>
+      <div>마우스 드래그 : 회전 / 마우스 휠 : 확대·축소</div>
     </div>
     <script type="module" src="/src/main.js"></script>
     <script>
@@ -79,11 +81,6 @@
         var hide = function () { if (statusEl) statusEl.style.display = 'none'; };
         var show = function (msg) { if (statusEl) statusEl.textContent = msg; };
         window.addEventListener('reactive-object-ready', hide, { once: true });
-        setTimeout(function () {
-          if (statusEl && statusEl.style.display !== 'none') {
-            show('로딩이 오래 걸리거나 실패했을 수 있어요.\n브라우저 콘솔(F12)을 확인하거나, 로컬에서 npm run dev 후 접속해 보세요.');
-          }
-        }, 15000);
       })();
     </script>
   </body>
