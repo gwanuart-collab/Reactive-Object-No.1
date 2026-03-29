@@ -31,8 +31,67 @@ const PLANE12_NAME = 'pPlane12'
 const PASTED_PLANE12_NAME = 'pasted__pPlane12'
 
 const STORAGE_KEY = 'signR_attached_names'
-/** 폴(소켓)에 기본으로 연결할 메쉬 이름. 저장 안 했을 때/다른 기기에서도 이 목록이 부착됨. 현재 부착 목록을 콘솔에 찍어서 여기 복사 가능 */
-const DEFAULT_ATTACHED_TO_SOCKET = []
+/** 폴(소켓)에 기본 연결할 메쉬 이름. 여기를 채우면 웹에서 따로 설정하지 않아도 동일하게 복원됨(코드 우선). getDefaultAttachCode()로 문자열 뽑기 가능 */
+const DEFAULT_ATTACHED_TO_SOCKET = [
+  'CUBE7',
+  'CUBE7_C',
+  'pPlane12',
+  'pasted__pPlane12',
+  'CUBE6_C',
+  'CUBE6',
+  'Cylinder36',
+  'RING1',
+  'Cylinder37',
+  'Cylinder35',
+  'RING3',
+  'RING4',
+  'Cylinder38',
+  'RING2',
+  'CUBE1',
+  'Cylinder2',
+  'Cylinder1',
+  'HAT1',
+  'HAT2',
+  'BODY1',
+  'BODY2',
+  'BODY3',
+  'CAP1',
+  'LIGHT1',
+  'CAP2',
+  'LIGHT2',
+  'CAP3',
+  'LIGHT3',
+  'polySurface36',
+  'polySurface35',
+  'polySurface37',
+  'CUBE2',
+  'CUBE3',
+  'pasted__pasted__Cylinder1',
+  'pasted__pasted__pasted__Cylinder1',
+  'Cylinder4',
+  'Cylinder14',
+  'Cylinder15',
+  'pPlane1',
+  'pPlane2',
+  'pPlane3',
+  'pPlane4',
+  'PIN17',
+  'PIN2',
+  'PIN3',
+  'PIN4',
+  'PIN6',
+  'PIN5',
+  'pSphere2',
+  'sweep2',
+  'pasted__LIGHT2',
+  'PIN16',
+  'PIN15',
+  'PIN14',
+  'PIN1',
+  'Cylinder17',
+  'Cylinder16',
+  'Cylinder20',
+]
 
 // =========================================================
 // ✅ [복구] Cylinder17: 1회 hover로 시작 → 마우스 떼도 x번 상하 반복
@@ -2748,18 +2807,19 @@ loader.load(
 
     if (socketTest) {
       let names = []
-      try {
-        const saved = localStorage.getItem(STORAGE_KEY)
-        if (saved) {
-          const parsed = JSON.parse(saved)
-          if (Array.isArray(parsed) && parsed.length) names = parsed
-        }
-      } catch (err) {
-        console.warn('❌ Failed to parse saved attach list:', err)
-      }
-      if (names.length === 0 && DEFAULT_ATTACHED_TO_SOCKET.length) {
+      if (DEFAULT_ATTACHED_TO_SOCKET.length) {
         names = [...DEFAULT_ATTACHED_TO_SOCKET]
-        console.log('📌 no saved list, using DEFAULT_ATTACHED_TO_SOCKET:', names)
+        console.log('📌 DEFAULT_ATTACHED_TO_SOCKET 사용 (코드 고정 목록):', names.length, '개')
+      } else {
+        try {
+          const saved = localStorage.getItem(STORAGE_KEY)
+          if (saved) {
+            const parsed = JSON.parse(saved)
+            if (Array.isArray(parsed) && parsed.length) names = parsed
+          }
+        } catch (err) {
+          console.warn('❌ Failed to parse saved attach list:', err)
+        }
       }
       if (names.length) {
         names.forEach((name) => {
