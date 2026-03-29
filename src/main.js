@@ -1626,6 +1626,17 @@ const AUTO_LIGHT_HOVER_PAUSE = 5
 ========================================================= */
 const loader = new GLTFLoader()
 
+/** #status 로딩 문구 (index.html). 큰 GLB는 네트워크+디코딩에 시간이 걸림 */
+function setLoadingStatus(visible, text) {
+  const el = document.getElementById('status')
+  if (!el) return
+  el.style.display = visible ? 'block' : 'none'
+  if (text != null) el.textContent = text
+}
+function notifyReactiveObjectReady() {
+  window.dispatchEvent(new CustomEvent('reactive-object-ready'))
+}
+
 let model = null
 let allMeshes = []
 
@@ -1896,15 +1907,20 @@ let robotArmCycleValue = 0
 const robotArmAxisBendValues = [0, 0, 0, 0]
 let prevHoverRobotArmTrigger = false
 
+setLoadingStatus(true, '모델 다운로드 준비 중…')
+
 loader.load(
   MODEL_URL,
   (gltf) => {
     try {
+      setLoadingStatus(true, '모델 적용 중… (큰 파일은 10~60초 걸릴 수 있음)')
       console.log('✅ GLTF loaded:', MODEL_URL)
 
       model = gltf.scene
       if (!model) {
         console.error('GLTF scene이 비어 있음')
+        setLoadingStatus(true, 'GLTF scene이 비어 있음')
+        notifyReactiveObjectReady()
         return
       }
       scene.add(model)
@@ -2963,12 +2979,27 @@ loader.load(
         console.log('✅ cable#4 created.')
       }
     }
+
+      setLoadingStatus(false)
+      notifyReactiveObjectReady()
     } catch (e) {
       console.error('Model setup error:', e)
+      setLoadingStatus(true, '모델 설정 중 오류 — 콘솔(F12) 확인')
+      notifyReactiveObjectReady()
     }
   },
-  undefined,
-  (err) => console.error('GLTF load error:', err)
+  (xhr) => {
+    if (xhr.lengthComputable && xhr.total > 0) {
+      const pct = Math.min(100, Math.round((xhr.loaded / xhr.total) * 100))
+      setLoadingStatus(true, `모델 다운로드 ${pct}%`)
+    } else {
+      setLoadingStatus(true, `모델 다운로드 ${(xhr.loaded / 1048576).toFixed(1)} MB …`)
+    }
+  },
+  (err) => {
+    console.error('GLTF load error:', err)
+    setLoadingStatus(true, '모델을 불러오지 못했습니다. 네트워크·경로·용량을 확인하세요.')
+  }
 )
 
 /* =========================================================
@@ -3161,7 +3192,7 @@ window.addEventListener('keydown', (e) => {
 let _prevT = performance.now()
 /** LIGHT1/2/3 호버 시 재생용. public/sound/light-hover.mp3 */
 const lightHoverSound = new Audio(LIGHT_HOVER_SOUND_URL)
-lightHoverSound.preload = 'auto'
+lightHoverSound.preload = 'none'
 let _prevHoverLightName = null
 let _prevHoverPole = false
 /** 자동 순차 점등: 현재 인덱스(0=LIGHT1, 1=LIGHT2, 2=LIGHT3), 다음 전환 시각(초), 호버 시 일시정지 끝 시각 */
@@ -3171,18 +3202,18 @@ let autoLightHoverPauseUntil = 0
 let _prevHasAnyHover = false
 /** 풍선(pasted__Cylinder5) 호버 시 재생용 */
 const balloonHoverSound = new Audio(BALLOON_HOVER_SOUND_URL)
-balloonHoverSound.preload = 'auto'
+balloonHoverSound.preload = 'none'
 let _prevHoverBalloon = false
 /** CUBE5_BASE 모프 시 재생용 */
 const cube5HongikSound = new Audio(CUBE5_HONGIK_SOUND_URL)
-cube5HongikSound.preload = 'auto'
+cube5HongikSound.preload = 'none'
 let _prevHoverCube5Base = false
 /** CUBE8(로봇팔) 호버 시 재생용 */
 const robotSound = new Audio(ROBOT_SOUND_URL)
-robotSound.preload = 'auto'
+robotSound.preload = 'none'
 /** CIRCLE1 호버 시 재생용 */
 const popballSound = new Audio(POPBALL_SOUND_URL)
-popballSound.preload = 'auto'
+popballSound.preload = 'none'
 /** 호버 사운드/트리거 연속 재생 방지. 이 시간(ms) 지나야 다시 재생 */
 const HOVER_COOLDOWN_MS = 450
 let _lastHoverSoundTime = 0
